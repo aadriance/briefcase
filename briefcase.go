@@ -1,5 +1,6 @@
 package main
 import "os"
+import "path"
 
 var VERSION = "0.0.1"
 
@@ -70,6 +71,10 @@ func printCommandInfo(cmd Command) {
   println("\tUsage: " + cmd.usage)
 }
 
+func getBriefcaseDir() string {
+  return path.Join(getTempDir().path, getBriefcaseDirName())
+}
+
 // Commands to be invoked by the main program
 
 func version() {
@@ -94,19 +99,18 @@ func info() {
 }
 
 func set() {
-  tempDir := getTempDir()
-  caseName := getBriefcaseDirName()
+  briefcase := getBriefcaseDir()
   if len(os.Args) < 4 {
     println("Incorrect set usage")
     return
   }
 
-  err := os.MkdirAll(tempDir.path + caseName, 0700)
+  err := os.MkdirAll(briefcase, 0700)
   if err != nil {
     println("Error: " + err.Error())
   }
 
-  err = os.WriteFile(tempDir.path + caseName + "/" + os.Args[2] + ".txt", []byte(os.Args[3]), 0644)
+  err = os.WriteFile(path.Join(briefcase, os.Args[2] + ".txt"), []byte(os.Args[3]), 0644)
   if err != nil {
     println("Error: " + err.Error())
     return
@@ -114,14 +118,13 @@ func set() {
 }
 
 func get() {
-  tempDir := getTempDir()
-  caseName := getBriefcaseDirName()
+  briefcase := getBriefcaseDir()
   if len(os.Args) < 3 {
     println("Incorrect get usage")
     return
   }
 
-  data, err := os.ReadFile(tempDir.path + caseName + "/" + os.Args[2] + ".txt")
+  data, err := os.ReadFile(path.Join(briefcase, os.Args[2] + ".txt"))
   if err != nil {
     println("Error: " + err.Error())
     return
