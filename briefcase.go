@@ -10,7 +10,7 @@ import (
 var VERSION = "0.0.1"
 
 type Command struct {
-	invoke      func(UserArgs)
+	invoke      func(UserArgs) bool
 	name        string
 	description string
 	usage       string
@@ -54,7 +54,11 @@ func main() {
 
 	for _, cmd := range commands {
 		if cmd.name == os.Args[1] {
-			cmd.invoke(args)
+			success := cmd.invoke(args)
+			if !success {
+				fmt.Println("Command help:")
+				printCommandInfo(cmd)
+			}
 			return
 		}
 	}
@@ -110,8 +114,9 @@ func getBriefcaseDir() string {
 // Commands to be invoked by the main program
 
 // version prints the version of briefcase
-func version(_ UserArgs) {
+func version(_ UserArgs) bool {
 	fmt.Println("Briefcase " + VERSION)
+	return true
 }
 
 // help printa all commands briefcase has.
@@ -123,20 +128,21 @@ func help() {
 }
 
 // info help the user get information about the temp dir used by briefcase.
-func info(_ UserArgs) {
+func info(_ UserArgs) bool {
 	tempInfo := getTempDir()
 	dirName := getBriefcaseDirName()
 	fmt.Println("\tTemp Dir: " + tempInfo.path)
 	fmt.Println("\tSourced From: " + tempInfo.envVar)
 	fmt.Println("\tBriefcase Directory Name: " + dirName)
+	return true
 }
 
 // set will store user provided data into the briefcase directory.
-func set(args UserArgs) {
+func set(args UserArgs) bool {
 	briefcase := getBriefcaseDir()
 	if args.name == "" || args.value == "" {
-		fmt.Println("Incorrect set usage")
-		return
+		fmt.Println("Missing argument for 'set'")
+		return false
 	}
 
 	err := os.MkdirAll(briefcase, 0700)
@@ -146,31 +152,34 @@ func set(args UserArgs) {
 
 	err = os.WriteFile(path.Join(briefcase, args.name), []byte(args.value), 0644)
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
-		return
+		fmt.Println("ERROR: failed to write file - " + err.Error())
+		return false
 	}
+
+	return true
 }
 
 // get retrieves data from the briefcase directory.
-func get(args UserArgs) {
+func get(args UserArgs) bool {
 	briefcase := getBriefcaseDir()
 	if args.name == "" {
-		fmt.Println("Incorrect get usage")
-		return
+		fmt.Println("ERROR: No briefcase entry specified.")
+		return false
 	}
 
 	data, err := os.ReadFile(path.Join(briefcase, args.name))
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
-		return
+		fmt.Println("ERROR: failed to read file - " + err.Error())
+		return false
 	}
 
 	os.Stdout.Write(data)
+	return true
 }
 
 // purge removes all briefcase data.
 // prompts user for confirmation if force is not provided.
-func purge(args UserArgs) {
+func purge(args UserArgs) bool {
 	var confirm string
 	if args.name == "force" {
 		confirm = "y"
@@ -183,35 +192,44 @@ func purge(args UserArgs) {
 		fmt.Println("Exiting without deleting data")
 	} else {
 		briefcase := getBriefcaseDir()
-		os.RemoveAll(briefcase)
+		err := os.RemoveAll(briefcase)
+		if err != nil {
+			fmt.Println("ERROR: Failed to remove briefcase directory - " + err.Error())
+			return false
+		}
 	}
+
+	return true
 }
 
 // remove deletes the data for the given breifcase entry.
-func remove(args UserArgs) {
+func remove(args UserArgs) bool {
 	briefcase := getBriefcaseDir()
 	if args.name == "" {
-		fmt.Println("Incorrect remove usage")
-		return
+		fmt.Println("ERROR: No briefcase entry specified.")
+		return false
 	}
 
 	err := os.Remove(path.Join(briefcase, args.name))
 	if err != nil {
-		fmt.Println("Error: " + err.Error())
+		fmt.Println("ERROR: Failed to remove file -  " + err.Error())
 	}
+
+	return true
 }
 
 // list dumps the full list of briefcase entries.
-func list(_ UserArgs) {
+func list(_ UserArgs) bool {
 	briefcase := getBriefcaseDir()
 	files, err := os.ReadDir(briefcase)
 	if err != nil {
 		// If there's an error, it's because the briefcase dir doesn't exist.
 		// simply list nothing.
-		return
+		return true
 	}
 
 	for _, file := range files {
 		fmt.Println(file.Name())
 	}
+	return true
 }
