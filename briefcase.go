@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
-  "strings"
+	"strings"
 )
 
 var VERSION = "0.0.1"
@@ -22,8 +22,8 @@ type TempDir struct {
 }
 
 type UserArgs struct {
-  name string
-  value string
+	name  string
+	value string
 }
 
 var commands = []Command{
@@ -43,20 +43,20 @@ var envVars = []string{
 }
 
 func main() {
-  args := UserArgs{"", ""}
+	args := UserArgs{"", ""}
 
 	if len(os.Args) < 2 {
 		help()
 		return
 	}
 
-  if len(os.Args) > 2 {
-    args.name = os.Args[2]
-  }
+	if len(os.Args) > 2 {
+		args.name = os.Args[2]
+	}
 
-  if len(os.Args) > 3 {
-    args.value = strings.Join(os.Args[3:len(os.Args)], " ")
-  }
+	if len(os.Args) > 3 {
+		args.value = strings.Join(os.Args[3:len(os.Args)], " ")
+	}
 
 	for _, cmd := range commands {
 		if cmd.name == os.Args[1] {
@@ -89,9 +89,9 @@ func getBriefcaseDirName() string {
 }
 
 func printCommandInfo(cmd Command) {
-	println(cmd.name)
-	println("\tDescription: " + cmd.description)
-	println("\tUsage: " + cmd.usage)
+	fmt.Println(cmd.name)
+	fmt.Println("\tDescription: " + cmd.description)
+	fmt.Println("\tUsage: " + cmd.usage)
 }
 
 func getBriefcaseDir() string {
@@ -101,11 +101,11 @@ func getBriefcaseDir() string {
 // Commands to be invoked by the main program
 
 func version(_ UserArgs) {
-	println("Briefcase " + VERSION)
+	fmt.Println("Briefcase " + VERSION)
 }
 
 func help() {
-	println("")
+	fmt.Println("")
 	for _, cmd := range commands {
 		printCommandInfo(cmd)
 	}
@@ -114,26 +114,26 @@ func help() {
 func info(_ UserArgs) {
 	tempInfo := getTempDir()
 	dirName := getBriefcaseDirName()
-	println("\tTemp Dir: " + tempInfo.path)
-	println("\tSourced From: " + tempInfo.envVar)
-	println("\tBriefcase Directory Name: " + dirName)
+	fmt.Println("\tTemp Dir: " + tempInfo.path)
+	fmt.Println("\tSourced From: " + tempInfo.envVar)
+	fmt.Println("\tBriefcase Directory Name: " + dirName)
 }
 
 func set(args UserArgs) {
 	briefcase := getBriefcaseDir()
 	if args.name == "" || args.value == "" {
-		println("Incorrect set usage")
+		fmt.Println("Incorrect set usage")
 		return
 	}
 
 	err := os.MkdirAll(briefcase, 0700)
 	if err != nil {
-		println("Error: " + err.Error())
+		fmt.Println("Error: " + err.Error())
 	}
 
 	err = os.WriteFile(path.Join(briefcase, args.name), []byte(args.value), 0644)
 	if err != nil {
-		println("Error: " + err.Error())
+		fmt.Println("Error: " + err.Error())
 		return
 	}
 }
@@ -141,25 +141,30 @@ func set(args UserArgs) {
 func get(args UserArgs) {
 	briefcase := getBriefcaseDir()
 	if args.name == "" {
-		println("Incorrect get usage")
+		fmt.Println("Incorrect get usage")
 		return
 	}
 
 	data, err := os.ReadFile(path.Join(briefcase, args.name))
 	if err != nil {
-		println("Error: " + err.Error())
+		fmt.Println("Error: " + err.Error())
 		return
 	}
 
 	os.Stdout.Write(data)
 }
 
-func purge(_ UserArgs) {
+func purge(args UserArgs) {
 	var confirm string
-	println("Are you sure you want to delete all briefcase data? (y/n)")
-	fmt.Scan(&confirm)
+	if args.name == "force" {
+		confirm = "y"
+	} else {
+		fmt.Println("Are you sure you want to delete all briefcase data? (y/n)")
+		fmt.Scan(&confirm)
+	}
+
 	if confirm != "y" {
-		println("Exiting without deleting data")
+		fmt.Println("Exiting without deleting data")
 	} else {
 		briefcase := getBriefcaseDir()
 		os.RemoveAll(briefcase)
@@ -169,13 +174,13 @@ func purge(_ UserArgs) {
 func remove(args UserArgs) {
 	briefcase := getBriefcaseDir()
 	if args.name == "" {
-		println("Incorrect remove usage")
+		fmt.Println("Incorrect remove usage")
 		return
 	}
 
 	err := os.Remove(path.Join(briefcase, args.name))
 	if err != nil {
-		println("Error: " + err.Error())
+		fmt.Println("Error: " + err.Error())
 	}
 }
 
@@ -189,6 +194,6 @@ func list(_ UserArgs) {
 	}
 
 	for _, file := range files {
-		println(file.Name())
+		fmt.Println(file.Name())
 	}
 }
