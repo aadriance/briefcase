@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 )
 
-var VERSION = "0.0.1"
+var VERSION = "0.5.0"
 
 type Command struct {
 	invoke      func(UserArgs) bool
@@ -111,6 +112,23 @@ func getBriefcaseDir() string {
 	return path.Join(getTempDir().path, getBriefcaseDirName())
 }
 
+// isValidEntry checks if the given entry is valid.
+// an entry must start with a letter and may contain letters, numbers, and underscores.
+func isValidEntry(entry string) bool {
+	var testRegex = "^[a-zA-Z][a-zA-Z0-9_]*$"
+	pass, err := regexp.MatchString(testRegex, entry)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	if !pass {
+		fmt.Println("Invalid entry. Name must start with a letter and only contain letters, numbers, and underscores.")
+	}
+
+	return pass
+}
+
 // Commands to be invoked by the main program
 
 // version prints the version of briefcase
@@ -145,6 +163,10 @@ func set(args UserArgs) bool {
 		return false
 	}
 
+	if !isValidEntry(args.name) {
+		return false
+	}
+
 	err := os.MkdirAll(briefcase, 0700)
 	if err != nil {
 		fmt.Println("Error: " + err.Error())
@@ -167,9 +189,19 @@ func get(args UserArgs) bool {
 		return false
 	}
 
+	if !isValidEntry(args.name) {
+		return false
+	}
+
 	data, err := os.ReadFile(path.Join(briefcase, args.name))
 	if err != nil {
-		fmt.Println("ERROR: failed to read file - " + err.Error())
+		if os.IsNotExist(err) {
+			fmt.Println(args.name + " is not currently in the breifcase.")
+			fmt.Println("Try adding it with set")
+		} else {
+			fmt.Println("ERROR: failed to read file - " + err.Error())
+		}
+
 		return false
 	}
 
@@ -210,11 +242,16 @@ func remove(args UserArgs) bool {
 		return false
 	}
 
+	if !isValidEntry(args.name) {
+		return false
+	}
+
 	err := os.Remove(path.Join(briefcase, args.name))
 	if err != nil {
 		fmt.Println("ERROR: Failed to remove file -  " + err.Error())
 	}
 
+	fmt.Println("Removed " + args.name)
 	return true
 }
 

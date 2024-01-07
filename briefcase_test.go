@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -123,12 +124,46 @@ func TestSetRemoveGet(t *testing.T) {
 		t.Fatal("Failed to set data, got ", data)
 	}
 
-	remove(args)
 	out = stealStdOut(t)
+	remove(args)
 	get(args)
 	restoreStdOut(&out)
 	data = getStdOut(&out)
 	if args.value == data {
 		t.Fatal("Data still present after remove: ", data)
+	}
+}
+
+func TestInvalidGet(t *testing.T) {
+	setVarsForTest(t)
+	args := UserArgs{"../MyVar", "../data"}
+	out := stealStdOut(t)
+	get(args)
+	restoreStdOut(&out)
+	data := getStdOut(&out)
+	if !strings.Contains(data, "Invalid entry.") {
+		t.Fatal("Didn't get an error for invalid name", data)
+	}
+}
+
+func TestNonexistantGet(t *testing.T) {
+	args := UserArgs{"ThisDoesNotExist", "../data"}
+	out := stealStdOut(t)
+	get(args)
+	restoreStdOut(&out)
+	data := getStdOut(&out)
+	if !strings.Contains(data, "ThisDoesNotExist") {
+		t.Fatal("didn't fail to retrieve nonexistent data!", data)
+	}
+}
+
+func TestNonexistantRemove(t *testing.T) {
+	args := UserArgs{"ThisDoesNotExist", ""}
+	out := stealStdOut(t)
+	remove(args)
+	restoreStdOut(&out)
+	data := getStdOut(&out)
+	if !strings.Contains(data, "ThisDoesNotExist") {
+		t.Fatal("Remove did not gracefully exit for nonexistent data", data)
 	}
 }
