@@ -3,7 +3,7 @@ use regex::Regex;
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const VERSION: &str = "0.5.0";
 
