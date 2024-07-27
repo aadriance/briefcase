@@ -4,5 +4,8 @@ version = "0.5.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.86"
 clap = { version = "4.3", features = ["derive"] }
+dirs = "5.0.1"
+redb = "2.1.1"
 regex = "1.5"

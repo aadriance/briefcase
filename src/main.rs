@@ -1,11 +1,13 @@
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use redb::{Database, ReadableTable, ReadableTableMetadata, TableDefinition};
 use regex::Regex;
-use std::env;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
-const VERSION: &str = "0.5.0";
+const DB_NAME: &str = "briefcase.redb";
+const TABLE: TableDefinition<&str, &str> = TableDefinition::new("briefcase");
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -18,7 +20,7 @@ struct Cli {
 enum Commands {
     /// Show the version of briefcase
     Version,
-    /// Show information about the temp directory used by briefcase
+    /// Show information about the database used by briefcase
     Info,
     /// Set a briefcase variable
     Set {
@@ -47,67 +49,29 @@ enum Commands {
     List,
 }
 
-struct TempDir {
-    path: PathBuf,
-    env_var: String,
-}
-
-#[derive(Debug)]
-enum BriefcaseError {
-    Io(io::Error),
-    InvalidEntry(String),
-    EntryNotFound(String),
-}
-
-impl From<io::Error> for BriefcaseError {
-    fn from(error: io::Error) -> Self {
-        BriefcaseError::Io(error)
-    }
-}
-
-type Result<T> = std::result::Result<T, BriefcaseError>;
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::Version => version(),
-        Commands::Info => info()?,
-        Commands::Set { name, value } => set(name, value)?,
-        Commands::Get { name } => get(name)?,
-        Commands::Purge { force } => purge(*force)?,
-        Commands::Remove { name } => remove(name)?,
-        Commands::List => list()?,
+        Commands::Info => info(),
+        Commands::Set { name, value } => set(name, value),
+        Commands::Get { name } => get(name),
+        Commands::Purge { force } => purge(*force),
+        Commands::Remove { name } => remove(name),
+        Commands::List => list(),
     }
-
-    Ok(())
 }
 
-// Utility functions
-
-fn get_temp_dir() -> TempDir {
-    let env_vars = ["BRIEFCASE_DIR", "TEMP", "TMPDIR"];
-
-    env_vars
-        .iter()
-        .find_map(|&env_var| {
-            env::var(env_var).ok().map(|dir| TempDir {
-                path: PathBuf::from(dir),
-                env_var: env_var.to_string(),
-            })
-        })
-        .unwrap_or_else(|| TempDir {
-            path: PathBuf::from("/tmp"),
-            env_var: "N/A".to_string(),
-        })
+fn get_db_path() -> PathBuf {
+    let home_dir = dirs::home_dir().expect("Unable to determine home directory");
+    home_dir.join(".briefcase").join(DB_NAME)
 }
 
-fn get_briefcase_dir_name() -> String {
-    env::var("BRIEFCASE_DIRNAME").unwrap_or_else(|_| "briefcase".to_string())
-}
-
-fn get_briefcase_dir() -> PathBuf {
-    get_temp_dir().path.join(get_briefcase_dir_name())
+fn open_db() -> Result<Database> {
+    let db_path = get_db_path();
+    fs::create_dir_all(db_path.parent().unwrap()).context("Failed to create database directory")?;
+    Database::create(db_path).context("Failed to open database")
 }
 
 fn is_valid_entry(entry: &str) -> bool {
@@ -117,50 +81,53 @@ fn is_valid_entry(entry: &str) -> bool {
 
 // Command functions
 
-fn version() {
-    println!("Briefcase {}", VERSION);
+fn version() -> Result<()> {
+    println!("Briefcase {}", std::env!("CARGO_PKG_VERSION"));
+    Ok(())
 }
 
 fn info() -> Result<()> {
-    let temp_info = get_temp_dir();
-    let dir_name = get_briefcase_dir_name();
-    println!("\tTemp Dir: {}", temp_info.path.display());
-    println!("\tSourced From: {}", temp_info.env_var);
-    println!("\tBriefcase Directory Name: {}", dir_name);
+    let db_path = get_db_path();
+    println!("Database path: {}", db_path.display());
+    let db = open_db()?;
+    let reader = db.begin_read()?;
+    let table = reader.open_table(TABLE)?;
+    println!("Number of entries: {}", table.len()?);
     Ok(())
 }
 
 fn set(name: &str, value: &str) -> Result<()> {
     if !is_valid_entry(name) {
-        return Err(BriefcaseError::InvalidEntry(name.to_string()));
+        anyhow::bail!("Invalid entry name: {}", name);
     }
 
-    let briefcase = get_briefcase_dir();
-    fs::create_dir_all(&briefcase)?;
-
-    let file_path = briefcase.join(name);
-    fs::write(file_path, value)?;
+    let db = open_db()?;
+    let write_txn = db.begin_write()?;
+    {
+        let mut table = write_txn.open_table(TABLE)?;
+        table.insert(name, value)?;
+    }
+    write_txn.commit()?;
+    println!("Set {} = {}", name, value);
     Ok(())
 }
 
 fn get(name: &str) -> Result<()> {
     if !is_valid_entry(name) {
-        return Err(BriefcaseError::InvalidEntry(name.to_string()));
+        anyhow::bail!("Invalid entry name: {}", name);
     }
 
-    let file_path = get_briefcase_dir().join(name);
-    let mut file = fs::File::open(&file_path).map_err(|e| {
-        if e.kind() == io::ErrorKind::NotFound {
-            BriefcaseError::EntryNotFound(name.to_string())
-        } else {
-            BriefcaseError::Io(e)
-        }
-    })?;
+    let db = open_db()?;
+    let reader = db.begin_read()?;
+    let table = reader.open_table(TABLE)?;
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    print!("{}", contents);
-    Ok(())
+    match table.get(name)? {
+        Some(value) => {
+            print!("{}", value.value());
+            Ok(())
+        }
+        None => anyhow::bail!("Entry not found: {}", name),
+    }
 }
 
 fn purge(force: bool) -> Result<()> {
@@ -175,44 +142,35 @@ fn purge(force: bool) -> Result<()> {
         }
     }
 
-    let briefcase = get_briefcase_dir();
-    fs::remove_dir_all(briefcase)?;
+    let db_path = get_db_path();
+    fs::remove_file(db_path).context("Failed to remove database file")?;
     println!("Briefcase data purged successfully");
     Ok(())
 }
 
 fn remove(name: &str) -> Result<()> {
     if !is_valid_entry(name) {
-        return Err(BriefcaseError::InvalidEntry(name.to_string()));
+        anyhow::bail!("Invalid entry name: {}", name);
     }
 
-    let file_path = get_briefcase_dir().join(name);
-    fs::remove_file(file_path)?;
-    println!("Removed {}", name);
+    let db = open_db()?;
+    let write_txn = db.begin_write()?;
+    {
+        let mut table = write_txn.open_table(TABLE)?;
+        table.remove(name)?;
+    }
+    write_txn.commit()?;
     Ok(())
 }
 
 fn list() -> Result<()> {
-    let briefcase = get_briefcase_dir();
-    let entries = fs::read_dir(briefcase)?;
+    let db = open_db()?;
+    let reader = db.begin_read()?;
+    let table = reader.open_table(TABLE)?;
 
-    for entry in entries {
-        let entry = entry?;
-        println!("{}", entry.file_name().to_string_lossy());
+    for result in table.iter()? {
+        let (key, value) = result?;
+        println!("{} = {}", key.value(), value.value());
     }
     Ok(())
 }
-
-// Error handling
-
-impl std::fmt::Display for BriefcaseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BriefcaseError::Io(err) => write!(f, "IO error: {}", err),
-            BriefcaseError::InvalidEntry(entry) => write!(f, "Invalid entry name: {}", entry),
-            BriefcaseError::EntryNotFound(entry) => write!(f, "Entry not found: {}", entry),
-        }
-    }
-}
-
-impl std::error::Error for BriefcaseError {}
